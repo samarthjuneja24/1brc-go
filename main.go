@@ -3,17 +3,15 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"io"
 	"os"
-	"runtime/trace"
 	"strconv"
 	"strings"
 	"time"
 )
 
-func readFile(filePath string, dataChan chan<- []byte) {
-	begin := time.Now()
-	const chunkSize = 1048576 // Define the size of each chunk to read. Adjust as necessary.
+func readFile(filePath string, dataChan chan<- []string) {
+	const blockSize = 1000000 // Number of lines per chunk, adjust as needed
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		fmt.Println("Error opening file:", err)
@@ -22,59 +20,36 @@ func readFile(filePath string, dataChan chan<- []byte) {
 	}
 	defer file.Close()
 
-	reader := bufio.NewReader(file)
-	var buffer []byte
+	scanner := bufio.NewScanner(file)
+	var chunk []string
 
-	for {
-		line, err := reader.ReadBytes('\n')
-		if len(line) > 0 {
-			// Check if adding this line exceeds the chunk size
-			if len(buffer)+len(line) > chunkSize {
-				// Send the current buffer as a chunk
-				dataChan <- append([]byte(nil), buffer...)
-				buffer = buffer[:0] // Reset buffer
-			}
-			buffer = append(buffer, line...)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if line != "" {
+			chunk = append(chunk, line)
 		}
 
-		if err == io.EOF {
-			break // End of file reached
-		} else if err != nil {
-			fmt.Println("Error reading file:", err)
-			break
-		}
-
-		// If we've reached the end of a chunk or file, send whatever is in the buffer
-		if len(buffer) >= chunkSize {
-			dataChan <- append([]byte(nil), buffer...)
-			buffer = buffer[:0] // Reset buffer
+		if len(chunk) >= blockSize {
+			dataChan <- chunk
+			chunk = nil // Reset the chunk
 		}
 	}
 
-	// Send any remaining data in the buffer as the last chunk
-	if len(buffer) > 0 {
-		dataChan <- append([]byte(nil), buffer...)
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading file:", err)
+	}
+
+	if len(chunk) > 0 {
+		dataChan <- chunk // Send any remaining lines
 	}
 
 	close(dataChan)
-	fmt.Println("Time taken by readFile:", time.Since(begin).Seconds())
 }
 
 func main() {
-	f, err := os.Create("trace.out")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-
-	err = trace.Start(f)
-	if err != nil {
-		panic(err)
-	}
-	defer trace.Stop()
 	begin := time.Now()
-	filePath := "../1brc/measurements_100m.txt"
-	dataChan := make(chan []byte)
+	filePath := "../measurements_100m.txt"
+	dataChan := make(chan []string)
 
 	go readFile(filePath, dataChan)
 
@@ -84,56 +59,33 @@ func main() {
 	cityRowCount := make(map[string]float64)
 
 	for chunk := range dataChan {
-		citiesAndTemp := strings.Split(string(chunk), "\n")
-		for _, cityTemp := range citiesAndTemp {
-			if cityTemp == "" {
-				continue
-			}
+		for _, cityTemp := range chunk {
 			cityTempString := strings.Split(cityTemp, ";")
 			city := cityTempString[0]
-			temperature, err := strconv.ParseFloat(cityTempString[1], 32)
+			temperature, err := strconv.ParseFloat(cityTempString[1], 64)
 			if err != nil {
 				fmt.Printf("Some error while parsing string to float %v\n", err)
+				continue
 			}
 
-			//Comparing min
-			value, exists := cityMinTemp[city]
-			if !exists {
-				cityMinTemp[city] = temperature
-			} else if temperature < value {
+			// Min, max, sum, and count calculations
+			if temp, exists := cityMinTemp[city]; !exists || temperature < temp {
 				cityMinTemp[city] = temperature
 			}
-
-			//Comparing max
-			value, exists = cityMaxTemp[city]
-			if !exists {
-				cityMaxTemp[city] = temperature
-			} else if temperature > value {
+			if temp, exists := cityMaxTemp[city]; !exists || temperature > temp {
 				cityMaxTemp[city] = temperature
 			}
-
-			//Computing sum per city
-			value, exists = citySumTemp[city]
-			if !exists {
-				citySumTemp[city] = temperature
-			} else {
-				citySumTemp[city] = citySumTemp[city] + temperature
-			}
-
-			//Computing count per city
-			countValue, exists := cityRowCount[city]
-			if !exists {
-				cityRowCount[city] = 1
-			} else {
-				cityRowCount[city] = countValue + 1
-			}
+			citySumTemp[city] += temperature
+			cityRowCount[city] += 1
 		}
 	}
-	fmt.Println(time.Since(begin).Seconds())
 
-	//for city, count := range cityRowCount {
-	//	fmt.Printf("min temp of %s: %v\n", city, cityMinTemp[city])
-	//	fmt.Printf("max temp of %s: %v\n", city, cityMaxTemp[city])
-	//	fmt.Printf("avg temp of %s: %v\n", city, citySumTemp[city]/count)
-	//}
+	fmt.Println("Total time:", time.Since(begin).Seconds())
+
+	// Uncomment to print city statistics
+	for city, count := range cityRowCount {
+		fmt.Printf("min temp of %s: %v\n", city, cityMinTemp[city])
+		fmt.Printf("max temp of %s: %v\n", city, cityMaxTemp[city])
+		fmt.Printf("avg temp of %s: %v\n", city, citySumTemp[city]/count)
+	}
 }
