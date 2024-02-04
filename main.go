@@ -48,7 +48,7 @@ func readFile(filePath string, dataChan chan<- []string) {
 
 func main() {
 	begin := time.Now()
-	filePath := "../measurements_100m.txt"
+	filePath := "../1brc/measurements_100m.txt"
 	dataChan := make(chan []string)
 
 	go readFile(filePath, dataChan)
@@ -83,9 +83,9 @@ func main() {
 	fmt.Println("Total time:", time.Since(begin).Seconds())
 
 	// Uncomment to print city statistics
-	for city, count := range cityRowCount {
-		fmt.Printf("min temp of %s: %v\n", city, cityMinTemp[city])
-		fmt.Printf("max temp of %s: %v\n", city, cityMaxTemp[city])
-		fmt.Printf("avg temp of %s: %v\n", city, citySumTemp[city]/count)
-	}
+	//for city, count := range cityRowCount {
+	//	fmt.Printf("min temp of %s: %v\n", city, cityMinTemp[city])
+	//	fmt.Printf("max temp of %s: %v\n", city, cityMaxTemp[city])
+	//	fmt.Printf("avg temp of %s: %v\n", city, citySumTemp[city]/count)
+	//}
 }
